@@ -1,6 +1,8 @@
 import os
+import pickle
 import threading
 import time
+import yaml
 
 import pandas as pd
 import numpy as np
@@ -34,10 +36,16 @@ class AppLogic:
         self.progress = 'not started yet'
 
         # === Custom ===
+        self.train = None
+        self.sep = None
+        self.label_column = None
         self.data = None
+        self.data_without_label = None
         self.filename = None
         self.values = None
-        self.global_variance = None
+
+        self.global_mean = None
+        self.global_stddev = None
 
     def handle_setup(self, client_id, master, clients):
         # This method is called once upon startup and contains information about the execution context of this instance
@@ -46,7 +54,7 @@ class AppLogic:
         self.clients = clients
         print(f'Received setup: {self.id} {self.master} {self.clients}')
 
-        dir_util.copy_tree('/mnt/input/', '/mnt/output/')
+        self.read_config()
 
         self.thread = threading.Thread(target=self.app_flow)
         self.thread.start()
@@ -61,6 +69,14 @@ class AppLogic:
         # This method is called when data is requested
         self.status_available = False
         return self.data_outgoing
+
+    def read_config(self):
+        dir_util.copy_tree('/mnt/input/', '/mnt/output/')
+        with open('/mnt/input/config.yml') as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)['fc_normalization']
+            self.train = config['files']['input']
+            self.sep = config['files']['sep']
+            self.label_column = config['files']['label_column']
 
     def app_flow(self):
         # This method contains a state machine for the slave and master instance
@@ -88,19 +104,14 @@ class AppLogic:
 
             if state == state_read_input:
                 print('Reading input...')
-                for filename in os.listdir('/mnt/input/'):
-                    if filename.endswith(".csv"):
-                        self.filename = filename
-                        self.data = pd.read_csv(os.path.join('/mnt/input/', filename))
-                        break
-                    else:
-                        continue
+                self.data = pd.read_csv(os.path.join(f'/mnt/input/', self.train), sep=self.sep)
+                self.data_without_label = self.data.drop(self.label_column, axis=1)
                 print('Read input.')
                 state = state_compute_variance
 
             if state == state_compute_variance:
                 print('Calculate local values...')
-                self.values = self.data.to_numpy()
+                self.values = self.data_without_label.to_numpy()
                 local_matrix = np.zeros((self.values.shape[1], 3))
                 local_matrix[:, 0] = self.values.shape[0]  # Sample sizes
                 local_matrix[:, 1] = np.sum(np.square(self.values), axis=0)
@@ -116,9 +127,10 @@ class AppLogic:
                     state = state_wait
 
             if state == state_result_ready:
-                result = self.values * self.global_variance
-                result_df = pd.DataFrame(data=result, columns=self.data.columns)
-                result_df.to_csv(os.path.join('/mnt/output/', self.filename), index=False)
+                result = (self.values - self.global_mean) / self.global_stddev
+                result_df = pd.DataFrame(data=result, columns=self.data_without_label.columns)
+                result_df[self.label_column] = self.data.loc[:, self.label_column]
+                result_df.to_csv(os.path.join('/mnt/output/', self.train), index=False, sep=self.sep)
 
                 if self.master:
                     state = state_finishing
@@ -138,12 +150,16 @@ class AppLogic:
                         global_matrix[:, 2] += local_matrix[:, 2]
 
                     global_mean_square = global_matrix[:, 1] / global_matrix[:, 0]
-                    global_square_mean = np.square(global_matrix[:, 2] / global_matrix[:, 0])
-                    self.global_variance = global_mean_square - global_square_mean
+                    self.global_mean = global_matrix[:, 2] / global_matrix[:, 0]
+                    self.global_stddev = np.sqrt(global_mean_square - np.square(self.global_mean))
 
-                    print(f'Result: {self.global_variance}')
+                    print(f'Mean: {self.global_mean}')
+                    print(f'Variance: {self.global_stddev}')
 
-                    self.data_outgoing = self.global_variance.dumps()
+                    self.data_outgoing = pickle.dumps({
+                        'stddev': self.global_stddev,
+                        'mean': self.global_mean,
+                    })
                     self.status_available = True
                     state = state_result_ready
                 else:
@@ -158,8 +174,13 @@ class AppLogic:
 
             if state == state_wait:
                 if len(self.data_incoming) > 0:
-                    self.global_variance = np.loads(self.data_incoming[0])
-                    print(f'Result: {self.global_variance}')
+                    pkg = pickle.loads(self.data_incoming[0])
+                    self.global_stddev = pkg['stddev']
+                    self.global_mean = pkg['mean']
+
+                    print(f'Stddev: {self.global_stddev}')
+                    print(f'Mean: {self.global_mean}')
+
                     state = state_result_ready
 
             time.sleep(1)
