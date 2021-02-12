@@ -1,9 +1,11 @@
-import json
+import os
 import threading
 import time
 
 import pandas as pd
 import numpy as np
+
+from distutils import dir_util
 
 
 class AppLogic:
@@ -33,6 +35,7 @@ class AppLogic:
 
         # === Custom ===
         self.data = None
+        self.filename = None
         self.values = None
         self.global_variance = None
 
@@ -42,6 +45,8 @@ class AppLogic:
         self.master = master
         self.clients = clients
         print(f'Received setup: {self.id} {self.master} {self.clients}')
+
+        dir_util.copy_tree('/mnt/input/', '/mnt/output/')
 
         self.thread = threading.Thread(target=self.app_flow)
         self.thread.start()
@@ -83,7 +88,13 @@ class AppLogic:
 
             if state == state_read_input:
                 print('Reading input...')
-                self.data = pd.read_csv('/mnt/input/input.csv')
+                for filename in os.listdir('/mnt/input/'):
+                    if filename.endswith(".csv"):
+                        self.filename = filename
+                        self.data = pd.read_csv(os.path.join('/mnt/input/', filename))
+                        break
+                    else:
+                        continue
                 print('Read input.')
                 state = state_compute_variance
 
@@ -107,7 +118,7 @@ class AppLogic:
             if state == state_result_ready:
                 result = self.values * self.global_variance
                 result_df = pd.DataFrame(data=result, columns=self.data.columns)
-                result_df.to_csv('/mnt/output/output.csv', index=False)
+                result_df.to_csv(os.path.join('/mnt/output/', self.filename), index=False)
 
                 if self.master:
                     state = state_finishing
