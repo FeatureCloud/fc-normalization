@@ -12,5 +12,5 @@ web_server = Bottle()
 
 @web_server.route('/')
 def index():
-    print(f'[WEB] GET /')
+    print(f'[WEB] GET /', flush=True)
     return f'Progress: {logic.progress}'
