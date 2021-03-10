@@ -78,14 +78,12 @@ class AppLogic:
         self.thread.start()
 
     def handle_incoming(self, data):
-        print(f'Received data: {data}')
         # This method is called when new data arrives
         self.lock.acquire()
         self.data_incoming.append(data.read())
         self.lock.release()
 
     def handle_outgoing(self):
-        print(f'Submit data: {self.data_outgoing}')
         # This method is called when data is requested
         self.status_available = False
         return self.data_outgoing
@@ -193,11 +191,17 @@ class AppLogic:
                 results = []
                 for i in range(len(self.values)):
                     if self.mode == 'variance':
-                        results.append((self.values[i] - self.global_mean[i]) / self.global_stddev[i])
+                        normalized = (self.values[i] - self.global_mean[i]) / self.global_stddev[i]
+                        normalized.fillna(0)
+                        results.append(normalized)
                     elif self.mode == 'minmax':
-                        results.append((self.values[i] - self.global_min[i]) / (self.global_max[i] - self.global_min[i]))
+                        normalized = (self.values[i] - self.global_min[i]) / (self.global_max[i] - self.global_min[i])
+                        normalized.fillna(0)
+                        results.append(normalized)
                     elif self.mode == 'maxabs':
-                        results.append(self.values[i] / self.global_maxabs[i])
+                        normalized = self.values[i] / self.global_maxabs[i]
+                        normalized.fillna(0)
+                        results.append(normalized)
 
                 def write_output(ins, result, path):
                     result_df = pd.DataFrame(data=result[0], columns=ins.data_without_label[0].columns)
@@ -239,6 +243,8 @@ class AppLogic:
 
             if state == state_gather:
                 if len(self.data_incoming) == len(self.clients):
+                    print(f'Have everything, continuing...')
+
                     client_data = []
                     for local_matrix_bytes in self.data_incoming:
                         client_data.append(pickle.loads(local_matrix_bytes))
@@ -270,8 +276,6 @@ class AppLogic:
                                 'stddev': global_stddev,
                                 'mean': global_mean,
                             })
-                            print(f'Mean: {global_mean}')
-                            print(f'Variance: {global_stddev}')
                             self.global_mean.append(global_mean)
                             self.global_stddev.append(global_stddev)
                         elif self.mode == 'minmax':
@@ -281,8 +285,6 @@ class AppLogic:
                                 'min': global_min,
                                 'max': global_max,
                             })
-                            print(f'Min: {global_min}')
-                            print(f'Max: {global_max}')
                             self.global_min.append(global_min)
                             self.global_max.append(global_max)
                         elif self.mode == 'maxabs':
@@ -290,7 +292,6 @@ class AppLogic:
                             data_outgoing.append({
                                 'maxabs': global_maxabs,
                             })
-                            print(f'Maxabs: {global_maxabs}')
                             self.global_maxabs.append(global_maxabs)
 
                     self.data_outgoing = pickle.dumps(data_outgoing)
@@ -318,15 +319,6 @@ class AppLogic:
                             self.global_max.append(pkg[i]['max'])
                         elif self.mode == 'maxabs':
                             self.global_maxabs.append(pkg[i]['maxabs'])
-
-                    if self.mode == 'variance':
-                        print(f'Stddev: {self.global_stddev}')
-                        print(f'Mean: {self.global_mean}')
-                    elif self.mode == 'minmax':
-                        print(f'Min: {self.global_min}')
-                        print(f'Max: {self.global_max}')
-                    elif self.mode == 'maxabs':
-                        print(f'Maxabs: {self.global_maxabs}')
 
                     state = state_result_ready
 
