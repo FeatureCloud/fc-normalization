@@ -1,13 +1,11 @@
+import numpy as np
 import os
+import pandas as pd
 import pathlib
 import pickle
 import threading
 import time
 import yaml
-
-import pandas as pd
-import numpy as np
-
 from distutils import dir_util
 
 APP_NAME = 'fc_normalization'
@@ -174,7 +172,7 @@ class AppLogic:
                         local_matrix[:, 0] = np.max(np.abs(values), axis=0)
                     local_matrices.append(local_matrix)
 
-                print(f'Calculated local values: {self.values}')
+                print(f'Calculated local values.')
 
                 if self.master:
                     self.lock.acquire()
@@ -191,17 +189,21 @@ class AppLogic:
                 results = []
                 for i in range(len(self.values)):
                     if self.mode == 'variance':
-                        normalized = (self.values[i] - self.global_mean[i]) / self.global_stddev[i]
-                        normalized.replace([np.inf, -np.inf, np.nan], 0)
-                        results.append(normalized)
+                        a = (self.values[i] - self.global_mean[i])
+                        b = self.global_stddev[i]
+                        normalized = np.divide(a, b, out=np.zeros_like(a), where=b != 0)
                     elif self.mode == 'minmax':
-                        normalized = (self.values[i] - self.global_min[i]) / (self.global_max[i] - self.global_min[i])
-                        normalized.replace([np.inf, -np.inf, np.nan], 0)
-                        results.append(normalized)
+                        a = (self.values[i] - self.global_min[i])
+                        b = (self.global_max[i] - self.global_min[i])
+                        normalized = np.divide(a, b, out=np.zeros_like(a), where=b != 0)
                     elif self.mode == 'maxabs':
-                        normalized = self.values[i] / self.global_maxabs[i]
-                        normalized.replace([np.inf, -np.inf, np.nan], 0)
-                        results.append(normalized)
+                        a = self.values[i]
+                        b = self.global_maxabs[i]
+                        normalized = np.divide(a, b, out=np.zeros_like(a), where=b != 0)
+                    normalized[normalized == np.inf] = 0
+                    normalized[normalized == -np.inf] = 0
+                    normalized[normalized == np.nan] = 0
+                    results.append(normalized)
 
                 def write_output(ins, result, path):
                     result_df = pd.DataFrame(data=result[0], columns=ins.data_without_label[0].columns)
