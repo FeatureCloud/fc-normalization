@@ -192,15 +192,15 @@ class AppLogic:
                 for i in range(len(self.values)):
                     if self.mode == 'variance':
                         normalized = (self.values[i] - self.global_mean[i]) / self.global_stddev[i]
-                        normalized.fillna(0)
+                        normalized.replace([np.inf, -np.inf, np.nan], 0)
                         results.append(normalized)
                     elif self.mode == 'minmax':
                         normalized = (self.values[i] - self.global_min[i]) / (self.global_max[i] - self.global_min[i])
-                        normalized.fillna(0)
+                        normalized.replace([np.inf, -np.inf, np.nan], 0)
                         results.append(normalized)
                     elif self.mode == 'maxabs':
                         normalized = self.values[i] / self.global_maxabs[i]
-                        normalized.fillna(0)
+                        normalized.replace([np.inf, -np.inf, np.nan], 0)
                         results.append(normalized)
 
                 def write_output(ins, result, path):
