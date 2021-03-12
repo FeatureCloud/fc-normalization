@@ -48,6 +48,7 @@ class AppLogic:
         self.label = None
 
         self.mode = None
+        self.normalize_test = None
 
         self.data = []
         self.data_without_label = []
@@ -104,6 +105,7 @@ class AppLogic:
             self.label = config['format']['label']
 
             self.mode = config.get('normalization', 'variance')
+            self.normalize_test = config.get('normalize_test', False)
 
     def app_flow(self):
         # This method contains a state machine for the slave and master instance
@@ -188,17 +190,21 @@ class AppLogic:
 
                 results = []
                 for i in range(len(self.values)):
+                    norm_i = i  # Index for choosing normalization values
+                    if i % 2 == 1 and self.input_test and not self.normalize_test:
+                        norm_i = i - 1
+
                     if self.mode == 'variance':
-                        a = (self.values[i] - self.global_mean[i])
-                        b = self.global_stddev[i]
+                        a = (self.values[i] - self.global_mean[norm_i])
+                        b = self.global_stddev[norm_i]
                         normalized = np.divide(a, b, out=np.zeros_like(a), where=b != 0)
                     elif self.mode == 'minmax':
-                        a = (self.values[i] - self.global_min[i])
-                        b = (self.global_max[i] - self.global_min[i])
+                        a = (self.values[i] - self.global_min[norm_i])
+                        b = (self.global_max[norm_i] - self.global_min[norm_i])
                         normalized = np.divide(a, b, out=np.zeros_like(a), where=b != 0)
                     elif self.mode == 'maxabs':
                         a = self.values[i]
-                        b = self.global_maxabs[i]
+                        b = self.global_maxabs[norm_i]
                         normalized = np.divide(a, b, out=np.zeros_like(a), where=b != 0)
                     normalized[normalized == np.inf] = 0
                     normalized[normalized == -np.inf] = 0
