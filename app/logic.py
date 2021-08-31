@@ -240,7 +240,7 @@ class AppLogic:
                         results = write_output(self, results, os.path.join(out_path, self.output_test))
 
                 if self.master:
-                    self.data_incoming = ['DONE']
+                    self.data_incoming.append('DONE')
                     state = state_finishing
                 else:
                     self.data_outgoing = 'DONE'
