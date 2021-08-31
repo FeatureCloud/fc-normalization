@@ -212,6 +212,7 @@ class AppLogic:
                     results.append(normalized)
 
                 def write_output(ins, result, path):
+                    print("Write output")
                     result_df = pd.DataFrame(data=result[0], columns=ins.data_without_label[0].columns)
                     result_df[ins.label] = ins.data[0].loc[:, ins.label]
                     result_df.to_csv(path, index=False, sep=ins.sep)
@@ -222,11 +223,13 @@ class AppLogic:
 
                     return result
 
-                print('Writing output...')
+                print('Prepare output...')
+                self.data_incoming = []
                 base_dir_in = os.path.normpath(os.path.join(f'/mnt/input/', self.split_dir))
                 base_dir_out = os.path.normpath(os.path.join(f'/mnt/output/', self.split_dir))
                 if self.split_mode == 'directory':
                     for split_name in os.listdir(os.path.join(base_dir_in)):
+                        print(split_name)
                         out_path = os.path.join(base_dir_out, split_name)
                         pathlib.Path(out_path).mkdir(parents=True, exist_ok=True)
                         results = write_output(self, results, os.path.join(out_path, self.output_train))
